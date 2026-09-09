@@ -46,6 +46,7 @@ function Home() {
   const [submissions, setSubmissions] = useState([]);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -53,17 +54,23 @@ function Home() {
       if (!data.session) { navigate('/login'); return; }
       setUser(data.session.user);
       const uid = data.session.user.id;
-      const [subRes, insightRes] = await Promise.all([
-        fetch(`${API_URL}/submissions/${uid}`).then((r) => r.json()),
-        fetch(`${API_URL}/insights/${uid}`).then((r) => r.json()),
-      ]);
-      if (subRes.success) setSubmissions(subRes.submissions);
-      if (insightRes.success) setInsights(insightRes);
+      try {
+        const [subRes, insightRes] = await Promise.all([
+          fetch(`${API_URL}/submissions/${uid}`).then((r) => r.json()),
+          fetch(`${API_URL}/insights/${uid}`).then((r) => r.json()),
+        ]);
+        if (subRes.success) setSubmissions(subRes.submissions);
+        if (insightRes.success) setInsights(insightRes);
+      } catch (err) {
+        setError(err.message || 'Gagal berhubung dengan pelayan');
+      }
       setLoading(false);
     });
   }, [navigate]);
 
-  if (loading) return null;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-[#0F172A]/40">Sedang memuatkan... (backend mungkin baru "bangun", boleh ambil sehingga 1 minit)</div>;
+  if (error) return <div className="min-h-screen flex items-center justify-center text-sm text-[#F97362] px-4 text-center">Ralat: {error}</div>;
+  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0];
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0];
 
   const chartA = submissions.filter((s) => s.bahagian === 'A').slice().reverse().map((s, i) => ({ name: `#${i + 1}`, markah: Math.round((s.markah / s.max_markah) * 100) }));
