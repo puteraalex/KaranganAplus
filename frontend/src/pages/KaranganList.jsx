@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { supabase } from '../supabaseClient';
 import { API_URL } from '../config';
 import Layout from '../components/Layout';
+import { LoadingScreen, ErrorScreen } from '../components/LoadingScreen';
 
 function relativeDate(dateStr) {
   const date = new Date(dateStr);
@@ -23,19 +24,25 @@ function getBadgeColor(peringkat) {
 function KaranganList() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session) { navigate('/login'); return; }
-      const res = await fetch(`${API_URL}/submissions/${data.session.user.id}`);
-      const subData = await res.json();
-      if (subData.success) setSubmissions(subData.submissions);
+      try {
+        const res = await fetch(`${API_URL}/submissions/${data.session.user.id}`);
+        const subData = await res.json();
+        if (subData.success) setSubmissions(subData.submissions);
+      } catch (err) {
+        setError(err.message || 'Gagal berhubung dengan pelayan');
+      }
       setLoading(false);
     });
   }, [navigate]);
 
-  if (loading) return null;
+  if (loading) return <LoadingScreen message="Sedang memuatkan sejarah..." />;
+  if (error) return <ErrorScreen message={error} />;
 
   return (
     <Layout>

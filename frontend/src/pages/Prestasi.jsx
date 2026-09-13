@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../supabaseClient';
+import { API_URL } from '../config';
 import Layout from '../components/Layout';
+import { LoadingScreen, ErrorScreen } from '../components/LoadingScreen';
 
 function MiniChart({ label, data, color }) {
   return (
@@ -28,23 +30,29 @@ function Prestasi() {
   const [submissions, setSubmissions] = useState([]);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session) { navigate('/login'); return; }
       const uid = data.session.user.id;
-      const [subRes, insightRes] = await Promise.all([
-        fetch(`http://localhost:5000/submissions/${uid}`).then((r) => r.json()),
-        fetch(`http://localhost:5000/insights/${uid}`).then((r) => r.json()),
-      ]);
-      if (subRes.success) setSubmissions(subRes.submissions);
-      if (insightRes.success) setInsights(insightRes);
+      try {
+        const [subRes, insightRes] = await Promise.all([
+          fetch(`${API_URL}/submissions/${uid}`).then((r) => r.json()),
+          fetch(`${API_URL}/insights/${uid}`).then((r) => r.json()),
+        ]);
+        if (subRes.success) setSubmissions(subRes.submissions);
+        if (insightRes.success) setInsights(insightRes);
+      } catch (err) {
+        setError(err.message || 'Gagal berhubung dengan pelayan');
+      }
       setLoading(false);
     });
   }, [navigate]);
 
-  if (loading) return null;
+  if (loading) return <LoadingScreen message="Sedang memuatkan prestasi..." />;
+  if (error) return <ErrorScreen message={error} />;
 
   const bahagianA = submissions.filter((s) => s.bahagian === 'A');
   const bahagianB = submissions.filter((s) => s.bahagian === 'B');

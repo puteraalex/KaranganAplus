@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { supabase } from '../supabaseClient';
 import { API_URL } from '../config';
 import Layout from '../components/Layout';
+import { LoadingScreen, ErrorScreen } from '../components/LoadingScreen';
 
 function relativeDate(dateStr) {
   const date = new Date(dateStr);
@@ -49,37 +50,28 @@ function Home() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const displayName = user?.user_metadata?.full_name ||   user?.email?.split('@')[0] ||  'Pengguna';
-
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
-        navigate('/login');
-        return;
-      }
-
+      if (!data.session) { navigate('/login'); return; }
       setUser(data.session.user);
       const uid = data.session.user.id;
-
       try {
         const [subRes, insightRes] = await Promise.all([
           fetch(`${API_URL}/submissions/${uid}`).then((r) => r.json()),
           fetch(`${API_URL}/insights/${uid}`).then((r) => r.json()),
         ]);
-
         if (subRes.success) setSubmissions(subRes.submissions);
         if (insightRes.success) setInsights(insightRes);
       } catch (err) {
         setError(err.message || 'Gagal berhubung dengan pelayan');
       }
-
       setLoading(false);
     });
   }, [navigate]);
 
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-[#0F172A]/40">Sedang memuatkan... (backend mungkin baru "bangun", boleh ambil sehingga 1 minit)</div>;
-  if (error) return <div className="min-h-screen flex items-center justify-center text-sm text-[#F97362] px-4 text-center">Ralat: {error}</div>;
+  if (loading) return <LoadingScreen message="Sedang memuatkan papan utama..." />;
+  if (error) return <ErrorScreen message={error} />;
+  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0];
 
   const chartA = submissions.filter((s) => s.bahagian === 'A').slice().reverse().map((s, i) => ({ name: `#${i + 1}`, markah: Math.round((s.markah / s.max_markah) * 100) }));
   const chartB = submissions.filter((s) => s.bahagian === 'B').slice().reverse().map((s, i) => ({ name: `#${i + 1}`, markah: Math.round((s.markah / s.max_markah) * 100) }));
