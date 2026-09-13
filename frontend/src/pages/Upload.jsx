@@ -5,11 +5,10 @@ import { API_URL } from '../config';
 import Layout from '../components/Layout';
 import ReportDisplay from '../components/ReportDisplay';
 
-
 function Upload() {
   const [bahagian, setBahagian] = useState('A');
-  const [soalanFile, setSoalanFile] = useState(null);
-  const [karanganFile, setKaranganFile] = useState(null);
+  const [soalanFiles, setSoalanFiles] = useState([]);
+  const [karanganFiles, setKaranganFiles] = useState([]);
   const [status, setStatus] = useState('');
   const [result, setResult] = useState(null);
   const [grade, setGrade] = useState(null);
@@ -28,26 +27,36 @@ function Upload() {
   }, [navigate]);
 
   const MAX_SIZE = 10 * 1024 * 1024;
-  const handleFileChange = (setter) => (e) => {
-    const file = e.target.files[0];
-    if (file && file.size > MAX_SIZE) { setStatus('❌ Fail terlalu besar (max 10MB)'); e.target.value = ''; return; }
-    setter(file);
+  const handleFilesChange = (setter) => (e) => {
+    const files = Array.from(e.target.files);
+    const oversized = files.find((f) => f.size > MAX_SIZE);
+    if (oversized) {
+      setStatus(`❌ Fail "${oversized.name}" terlalu besar (max 10MB)`);
+      e.target.value = '';
+      return;
+    }
+    setter(files);
   };
+
+  const removeFile = (setter, files, index) => setter(files.filter((_, i) => i !== index));
 
   const handleReset = () => {
     setResult(null); setGrade(null); setFeedback(null); setChatMessages([]); setStatus('');
-    setSoalanFile(null); setKaranganFile(null);
+    setSoalanFiles([]); setKaranganFiles([]);
   };
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!soalanFile || !karanganFile) return;
-    handleReset();
+    if (soalanFiles.length === 0 || karanganFiles.length === 0) {
+      setStatus('❌ Sila pilih sekurang-kurangnya satu fail untuk Soalan dan Karangan');
+      return;
+    }
+    setResult(null); setGrade(null); setFeedback(null); setChatMessages([]);
     setStatus('Sedang memuat naik...');
     const formData = new FormData();
     formData.append('bahagian', bahagian);
-    formData.append('soalan', soalanFile);
-    formData.append('karangan', karanganFile);
+    soalanFiles.forEach((f) => formData.append('soalan', f));
+    karanganFiles.forEach((f) => formData.append('karangan', f));
 
     try {
       const uploadRes = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
@@ -57,7 +66,7 @@ function Upload() {
       setStatus('Sedang menganalisis karangan anda... AI sedang menyemak kandungan, bahasa dan struktur penulisan.');
       const analyzeRes = await fetch(`${API_URL}/analyze`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soalanPath: uploadData.soalanPath, karanganPath: uploadData.karanganPath }),
+        body: JSON.stringify({ soalanPaths: uploadData.soalanPaths, karanganPaths: uploadData.karanganPaths }),
       });
       const analyzeData = await analyzeRes.json();
       if (!analyzeData.success) return setStatus(`Analisis tidak dapat dilakukan. ${analyzeData.error}`);
@@ -154,23 +163,38 @@ function Upload() {
                   className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${bahagian === 'B' ? 'bg-white text-[#2563EB] shadow-sm' : 'text-[#0F172A]/50'}`}>Bahagian B</button>
               </div>
 
-              <div className="border-2 border-dashed border-black/10 rounded-xl p-6 flex flex-col items-center gap-2 text-center">
-                <span className="text-3xl">📄</span>
-                <p className="text-sm font-medium text-[#0F172A]">Muat naik karangan anda</p>
-                <p className="text-xs text-[#0F172A]/40">Format disokong: PDF / Imej</p>
+              <div>
+                <label className="text-xs font-medium text-[#0F172A]/60 block mb-1.5">Soalan (boleh pilih beberapa fail)</label>
+                <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleFilesChange(setSoalanFiles)}
+                  className="w-full text-sm border border-black/10 rounded-xl px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#EFF6FF] file:text-[#2563EB] file:text-xs file:font-medium" />
+                {soalanFiles.length > 0 && (
+                  <div className="flex flex-col gap-1 mt-2">
+                    {soalanFiles.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs bg-[#F8FAFC] rounded-lg px-3 py-1.5">
+                        <span className="truncate">{i + 1}. {f.name}</span>
+                        <button type="button" onClick={() => removeFile(setSoalanFiles, soalanFiles, i)} className="text-[#F97362] ml-2 shrink-0">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
-                <label className="text-xs font-medium text-[#0F172A]/60 block mb-1.5">Soalan</label>
-                <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
-                  onChange={handleFileChange(setSoalanFile)}
-                  className="w-full text-sm border border-black/10 rounded-xl px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#EFF6FF] file:text-[#2563EB] file:text-xs file:font-medium" required />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[#0F172A]/60 block mb-1.5">Karangan</label>
-                <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
-                  onChange={handleFileChange(setKaranganFile)}
-                  className="w-full text-sm border border-black/10 rounded-xl px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#EFF6FF] file:text-[#2563EB] file:text-xs file:font-medium" required />
+                <label className="text-xs font-medium text-[#0F172A]/60 block mb-1.5">Karangan (untuk karangan panjang, upload setiap muka surat berasingan ikut turutan)</label>
+                <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleFilesChange(setKaranganFiles)}
+                  className="w-full text-sm border border-black/10 rounded-xl px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#EFF6FF] file:text-[#2563EB] file:text-xs file:font-medium" />
+                {karanganFiles.length > 0 && (
+                  <div className="flex flex-col gap-1 mt-2">
+                    {karanganFiles.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs bg-[#F8FAFC] rounded-lg px-3 py-1.5">
+                        <span className="truncate">Muka {i + 1}: {f.name}</span>
+                        <button type="button" onClick={() => removeFile(setKaranganFiles, karanganFiles, i)} className="text-[#F97362] ml-2 shrink-0">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <button type="submit" disabled={isProcessing}

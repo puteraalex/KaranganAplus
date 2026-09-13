@@ -64,18 +64,21 @@ app.get('/test-openai', async (req, res) => {
 });
 
 app.post('/upload', upload.fields([
-  { name: 'soalan', maxCount: 1 },
-  { name: 'karangan', maxCount: 1 },
+  { name: 'soalan', maxCount: 5 },
+  { name: 'karangan', maxCount: 5 },
 ]), async (req, res) => {
   try {
     const { bahagian } = req.body;
-    const soalanFile = req.files?.soalan?.[0];
-    const karanganFile = req.files?.karangan?.[0];
+    const soalanFiles = req.files?.soalan || [];
+    const karanganFiles = req.files?.karangan || [];
 
-    if (!bahagian || !soalanFile || !karanganFile) {
+    if (!bahagian || soalanFiles.length === 0 || karanganFiles.length === 0) {
       return res.status(400).json({ success: false, error: 'Bahagian, soalan, dan karangan semua wajib diisi' });
     }
-    if (!ALLOWED_TYPES.includes(soalanFile.mimetype) || !ALLOWED_TYPES.includes(karanganFile.mimetype)) {
+
+    const allFiles = [...soalanFiles, ...karanganFiles];
+    const invalidFile = allFiles.find((f) => !ALLOWED_TYPES.includes(f.mimetype));
+    if (invalidFile) {
       return res.status(400).json({
         success: false,
         error: 'Format tak disokong. Guna PDF, JPEG, PNG, WEBP, atau GIF (HEIC dari iPhone tak disokong).',
@@ -83,55 +86,61 @@ app.post('/upload', upload.fields([
     }
 
     const timestamp = Date.now();
-    const soalanPath = `${bahagian}_soalan_${timestamp}.${getExtension(soalanFile.mimetype)}`;
-    const karanganPath = `${bahagian}_karangan_${timestamp}.${getExtension(karanganFile.mimetype)}`;
+    const soalanPaths = [];
+    for (let i = 0; i < soalanFiles.length; i++) {
+      const file = soalanFiles[i];
+      const path = `${bahagian}_soalan_${timestamp}_${i}.${getExtension(file.mimetype)}`;
+      const { error } = await supabase.storage.from('karangan-uploads').upload(path, file.buffer, { contentType: file.mimetype });
+      if (error) return res.status(500).json({ success: false, error: `Soalan upload: ${error.message}` });
+      soalanPaths.push(path);
+    }
 
-    const { error: soalanError } = await supabase.storage
-      .from('karangan-uploads')
-      .upload(soalanPath, soalanFile.buffer, { contentType: soalanFile.mimetype });
-    if (soalanError) return res.status(500).json({ success: false, error: `Soalan upload: ${soalanError.message}` });
+    const karanganPaths = [];
+    for (let i = 0; i < karanganFiles.length; i++) {
+      const file = karanganFiles[i];
+      const path = `${bahagian}_karangan_${timestamp}_${i}.${getExtension(file.mimetype)}`;
+      const { error } = await supabase.storage.from('karangan-uploads').upload(path, file.buffer, { contentType: file.mimetype });
+      if (error) return res.status(500).json({ success: false, error: `Karangan upload: ${error.message}` });
+      karanganPaths.push(path);
+    }
 
-    const { error: karanganError } = await supabase.storage
-      .from('karangan-uploads')
-      .upload(karanganPath, karanganFile.buffer, { contentType: karanganFile.mimetype });
-    if (karanganError) return res.status(500).json({ success: false, error: `Karangan upload: ${karanganError.message}` });
-
-    res.json({ success: true, message: 'Upload berjaya!', bahagian, soalanPath, karanganPath });
+    res.json({ success: true, message: 'Upload berjaya!', bahagian, soalanPaths, karanganPaths });
   } catch (error) {
-    console.error('Upload error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.post('/analyze', async (req, res) => {
-  const { soalanPath, karanganPath } = req.body;
-  if (!soalanPath || !karanganPath) {
-    return res.status(400).json({ success: false, error: 'soalanPath dan karanganPath diperlukan' });
+  const { soalanPaths, karanganPaths } = req.body;
+  if (!soalanPaths?.length || !karanganPaths?.length) {
+    return res.status(400).json({ success: false, error: 'soalanPaths dan karanganPaths diperlukan' });
   }
 
   try {
-    const { data: soalanBlob, error: soalanDlError } = await supabase.storage
-      .from('karangan-uploads').download(soalanPath);
-    if (soalanDlError) throw new Error(soalanDlError.message);
+    const soalanParts = [];
+    for (let i = 0; i < soalanPaths.length; i++) {
+      const { data: blob, error } = await supabase.storage.from('karangan-uploads').download(soalanPaths[i]);
+      if (error) throw new Error(error.message);
+      const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
+      soalanParts.push(buildContentPart(blob, base64, `soalan-${i + 1}`));
+    }
 
-    const { data: karanganBlob, error: karanganDlError } = await supabase.storage
-      .from('karangan-uploads').download(karanganPath);
-    if (karanganDlError) throw new Error(karanganDlError.message);
+    const karanganParts = [];
+    for (let i = 0; i < karanganPaths.length; i++) {
+      const { data: blob, error } = await supabase.storage.from('karangan-uploads').download(karanganPaths[i]);
+      if (error) throw new Error(error.message);
+      const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
+      karanganParts.push(buildContentPart(blob, base64, `karangan-${i + 1}`));
+    }
 
-    const soalanBase64 = Buffer.from(await soalanBlob.arrayBuffer()).toString('base64');
-    const karanganBase64 = Buffer.from(await karanganBlob.arrayBuffer()).toString('base64');
+    const prompt = `Awak ialah AI Examiner untuk karangan Bahasa Melayu SPM. Fail-fail ni (PDF atau imej) dihantar ikut TURUTAN — anggap SEMUA fail soalan sebagai SATU dokumen soalan berterusan, dan SEMUA fail karangan sebagai SATU karangan berterusan (mungkin beberapa muka surat karangan panjang).
 
-    const soalanPart = buildContentPart(soalanBlob, soalanBase64, 'soalan');
-    const karanganPart = buildContentPart(karanganBlob, karanganBase64, 'karangan');
-
-    const prompt = `Awak ialah AI Examiner untuk karangan Bahasa Melayu SPM. Baca dua fail ni (boleh PDF atau imej) — fail pertama ialah SOALAN, fail kedua ialah KARANGAN pelajar.
-
-Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), ikut struktur ni:
+Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown):
 {
   "valid": true atau false (false jika fail bukan soalan/karangan BM yang sah, contoh: kosong, subjek lain, tak berkaitan),
   "reason": "sebab ringkas jika valid=false, kosongkan string jika valid=true",
-  "soalanText": "teks soalan yang di-extract",
-  "karanganText": "teks karangan yang di-extract",
+  "soalanText": "teks soalan yang di-extract (gabungkan semua muka surat)",
+  "karanganText": "teks karangan yang di-extract (gabungkan semua muka surat ikut turutan)",
   "wordCount": jumlah patah perkataan dalam karangan sahaja (integer)
 }`;
 
@@ -139,7 +148,7 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), ikut struktur n
       model: 'gpt-5.6',
       input: [{
         role: 'user',
-        content: [soalanPart, karanganPart, { type: 'input_text', text: prompt }],
+        content: [...soalanParts, ...karanganParts, { type: 'input_text', text: prompt }],
       }],
     });
 
