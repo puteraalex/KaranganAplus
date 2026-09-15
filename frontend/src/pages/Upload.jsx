@@ -77,22 +77,20 @@ function Upload() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bahagian, soalanText: analyzeData.soalanText, karanganText: analyzeData.karanganText, wordCount: analyzeData.wordCount }),
       });
-      await understandRes.json();
-
-      const gradeRes = await fetch(`${API_URL}/grade`, {
+            setStatus('Sedang menilai dan menjana maklum balas...');
+      const evalRes = await fetch(`${API_URL}/evaluate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bahagian, soalanText: analyzeData.soalanText, karanganText: analyzeData.karanganText, wordCount: analyzeData.wordCount }),
       });
-      const gradeData = await gradeRes.json();
-      if (!gradeData.success) return setStatus(`Analisis tidak dapat dilakukan. ${gradeData.error}`);
-      setGrade(gradeData);
+      const evalData = await evalRes.json();
+      if (!evalData.success) return setStatus(`Analisis tidak dapat dilakukan. ${evalData.error}`);
 
-      const feedbackRes = await fetch(`${API_URL}/feedback`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bahagian, karanganText: analyzeData.karanganText, wordCount: analyzeData.wordCount }),
-      });
-      const feedbackData = await feedbackRes.json();
-      if (!feedbackData.success) return setStatus(`Analisis tidak dapat dilakukan. ${feedbackData.error}`);
+      const gradeData = {
+        markah: evalData.markah, peringkat: evalData.peringkat, justifikasi: evalData.justifikasi,
+        kekuatan: evalData.kekuatan, kelemahan: evalData.kelemahan, fokusUtama: evalData.fokusUtama, rumusan: evalData.rumusan,
+      };
+      const feedbackData = { perenggan: evalData.perenggan };
+      setGrade(gradeData);
       setFeedback(feedbackData);
       setStatus('');
 
