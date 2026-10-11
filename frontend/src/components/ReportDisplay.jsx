@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Sparkles, Target, FileText, Type, PenLine } from 'lucide-react';
 
 function ScoreRing({ score, max }) {
   const percentage = Math.min(100, (score / max) * 100);
@@ -72,13 +73,13 @@ function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) 
 
       <div id="kekuatan" className="grid md:grid-cols-2 gap-3">
         <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5">
-          <p className="text-xs font-semibold text-[#0EA5A0] uppercase tracking-wide mb-3">✨ Kekuatan</p>
+          <p className="text-xs font-semibold text-[#0EA5A0] uppercase tracking-wide mb-3 flex items-center gap-1.5"><Sparkles size={18} />Kekuatan</p>
           <ul className="flex flex-col gap-2">
             {grade.kekuatan?.map((k, i) => <li key={i} className="text-sm flex gap-2"><span className="text-[#0EA5A0] shrink-0">✓</span>{k}</li>)}
           </ul>
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5">
-          <p className="text-xs font-semibold text-[#F97362] uppercase tracking-wide mb-3">🎯 Boleh Diperbaiki</p>
+          <p className="text-xs font-semibold text-[#F97362] uppercase tracking-wide mb-3 flex items-center gap-1.5"><Target size={18} />Boleh Diperbaiki</p>
           <ul className="flex flex-col gap-2">
             {grade.kelemahan?.map((k, i) => <li key={i} className="text-sm flex gap-2"><span className="text-[#F97362] shrink-0">⚠</span>{k}</li>)}
           </ul>
@@ -87,7 +88,7 @@ function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) 
 
       {grade.fokusUtama?.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5">
-          <p className="text-xs font-semibold text-[#0F172A]/50 uppercase tracking-wide mb-4">🎯 Fokus Utama</p>
+          <p className="text-xs font-semibold text-[#0F172A]/50 uppercase tracking-wide mb-4 flex items-center gap-1.5"><Target size={18} />Fokus Utama</p>
           <div className="flex flex-col gap-4">
             {grade.fokusUtama.map((f, i) => (
               <div key={i} className="flex gap-3">
@@ -100,7 +101,7 @@ function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) 
       )}
 
       <div id="perenggan">
-        <p className="font-display font-semibold text-[#0F172A] mb-3">📝 Feedback Mengikut Perenggan</p>
+        <p className="font-display font-semibold text-[#0F172A] mb-3 flex items-center gap-1.5"><FileText size={18} />Feedback Mengikut Perenggan</p>
         <div className="flex flex-col gap-2">
           {feedback?.perenggan?.map((p) => {
             const ok = !p.kesalahanBahasa || p.kesalahanBahasa.length === 0;
@@ -135,7 +136,7 @@ function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) 
 
       {semakanBahasa.length > 0 && (
         <div id="bahasa">
-          <p className="font-display font-semibold text-[#0F172A] mb-3">🔤 Semakan Bahasa</p>
+          <p className="font-display font-semibold text-[#0F172A] mb-3 flex items-center gap-1.5"><Type size={18} />Semakan Bahasa</p>
           <div className="flex flex-col gap-3">
             {semakanBahasa.map((s, i) => (
               <div key={i} className="bg-white rounded-2xl shadow-sm border border-black/5 p-4">
@@ -154,7 +155,7 @@ function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) 
 
       {cadanganList.length > 0 && (
         <div id="cadangan">
-          <p className="font-display font-semibold text-[#0F172A] mb-3">✍️ Cadangan Penambahbaikan</p>
+          <p className="font-display font-semibold text-[#0F172A] mb-3 flex items-center gap-1.5"><PenLine size={18} />Cadangan Penambahbaikan</p>
           <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 flex flex-col gap-2">
             {cadanganList.map((c, i) => (
               <p key={i} className="text-sm"><span className="text-[#2563EB] font-medium">{c.type}:</span> <span className="text-[#0F172A]/70">{c.text}</span></p>
@@ -164,7 +165,7 @@ function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) 
       )}
 
       <div className="bg-[#0F2A5F] rounded-2xl p-6 text-center flex flex-col items-center gap-3">
-        <p className="text-white/90 text-xs font-semibold tracking-wide">🎯 LANGKAH SETERUSNYA</p>
+        <p className="text-white/90 text-xs font-semibold tracking-wide flex items-center justify-center gap-1.5"><Target size={18} />LANGKAH SETERUSNYA</p>
         <p className="text-white/60 text-sm">Berdasarkan analisis ini, fokus pada:</p>
         <div className="flex flex-col gap-1.5 text-left w-full max-w-xs">
           {grade.fokusUtama?.map((f, i) => (

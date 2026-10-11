@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { API_URL } from '../config';
 import Layout from '../components/Layout';
 import { LoadingScreen, ErrorScreen } from '../components/LoadingScreen';
+import { Sparkles, Target, Lightbulb } from 'lucide-react';
 
 function MiniChart({ label, data, color }) {
   return (
@@ -105,15 +106,15 @@ function Prestasi() {
                 <p className="font-display font-semibold text-[#0F172A] mb-3">Pandangan AI</p>
                 <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 flex flex-col gap-4">
                   <div className="flex gap-3">
-                    <span className="text-lg shrink-0">✨</span>
+                    <Sparkles size={18} className="text-[#0EA5A0] shrink-0" />
                     <div><p className="text-xs font-semibold text-[#0EA5A0] uppercase tracking-wide">Kekuatan</p><p className="text-sm text-[#0F172A]/80 mt-0.5">{insights.kekuatan}</p></div>
                   </div>
                   <div className="flex gap-3">
-                    <span className="text-lg shrink-0">🎯</span>
+                    <Target size={18} className="text-[#F97362] shrink-0" />
                     <div><p className="text-xs font-semibold text-[#F97362] uppercase tracking-wide">Perlu Diperbaiki</p><p className="text-sm text-[#0F172A]/80 mt-0.5">{insights.perluDiperbaiki}</p></div>
                   </div>
                   <div className="flex gap-3">
-                    <span className="text-lg shrink-0">💡</span>
+                    <Lightbulb size={18} className="text-[#2563EB] shrink-0" />
                     <div><p className="text-xs font-semibold text-[#2563EB] uppercase tracking-wide">Fokus Seterusnya</p><p className="text-sm text-[#0F172A]/80 mt-0.5">{insights.fokusSeterusnya}</p></div>
                   </div>
                 </div>

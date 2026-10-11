@@ -35,7 +35,7 @@ function Profile() {
 
   return (
     <Layout>
-      <div className="flex-1 px-4 md:px-8 py-6 max-w-md w-full mx-auto flex flex-col gap-6">
+      <div className="flex-1 px-4 md:px-8 py-6 max-w-md w-full mx-auto flex flex-col gap-8">
         <p className="font-display text-xl font-semibold text-[#0F172A]">Tetapan</p>
 
         <form onSubmit={handleSave} className="bg-white rounded-2xl shadow-sm border border-black/5 p-6 flex flex-col gap-4">

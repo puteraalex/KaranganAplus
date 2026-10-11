@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { supabase } from '../supabaseClient';
+import { CircleCheck } from 'lucide-react';
 
 function Signup() {
   const [email, setEmail] = useState('');
@@ -24,7 +25,7 @@ function Signup() {
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center">
           <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-8">
-            <p className="text-3xl mb-3">✅</p>
+            <p className="flex justify-center mb-3"><CircleCheck size={36} className="text-[#0EA5A0]" /></p>
             <h1 className="font-display text-lg font-semibold mb-2 text-[#0F172A]">Akaun Berjaya Dicipta</h1>
             <p className="text-sm text-[#0F172A]/60 mb-6">Sila log masuk untuk mula guna Karangan A+.</p>
             <Link to="/login" className="inline-block bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl py-2.5 px-6 font-medium transition">

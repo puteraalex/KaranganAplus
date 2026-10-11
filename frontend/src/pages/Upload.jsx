@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { API_URL } from '../config';
 import Layout from '../components/Layout';
 import ReportDisplay from '../components/ReportDisplay';
+import { MessageCircle } from 'lucide-react';
 
 function Upload() {
   const [bahagian, setBahagian] = useState('A');
@@ -145,7 +146,7 @@ function Upload() {
 
   return (
     <Layout>
-      <div className="flex-1 px-4 md:px-8 py-6 max-w-3xl w-full mx-auto flex flex-col gap-6">
+      <div className="flex-1 px-4 md:px-8 py-6 max-w-3xl w-full mx-auto flex flex-col gap-8">
 
         {!feedback && (
           <>
@@ -220,7 +221,7 @@ function Upload() {
             <ReportDisplay bahagian={bahagian} wordCount={result.wordCount} grade={grade} feedback={feedback} onNewAnalysis={handleReset} />
 
             <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 flex flex-col gap-3">
-              <p className="font-display font-semibold text-[#0F172A]">💬 Tanya Cikgu AI</p>
+              <p className="font-display font-semibold text-[#0F172A] flex items-center gap-2"><MessageCircle size={18} />Tanya Cikgu AI</p>
               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
                 {chatMessages.length === 0 && <p className="text-sm text-[#0F172A]/40 text-center py-4">Ada soalan pasal result awak? Tanya di sini.</p>}
                 {chatMessages.map((m, i) => (
