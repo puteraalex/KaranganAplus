@@ -9,9 +9,6 @@ function Upload() {
   const [bahagian, setBahagian] = useState('A');
   const [soalanFiles, setSoalanFiles] = useState([]);
   const [karanganFiles, setKaranganFiles] = useState([]);
-  const [bankSoalan, setBankSoalan] = useState([]);
-  const [useBank, setUseBank] = useState(false);
-  const [selectedBankId, setSelectedBankId] = useState(null);
   const [status, setStatus] = useState('');
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
@@ -30,16 +27,6 @@ function Upload() {
     });
   }, [navigate]);
 
-  useEffect(() => {
-    fetch(`${API_URL}/soalan-bank`)
-      .then((res) => res.json())
-      .then((data) => { if (data.success) setBankSoalan(data.bank || []); })
-      .catch(() => setBankSoalan([]));
-  }, []);
-
-  const filteredBank = bankSoalan.filter((s) => s.bahagian === bahagian);
-  const selectedBankSoalan = filteredBank.find((s) => s.id === selectedBankId) || null;
-
   const MAX_SIZE = 10 * 1024 * 1024;
   const handleFilesChange = (setter) => (e) => {
     const files = Array.from(e.target.files);
@@ -55,56 +42,27 @@ function Upload() {
 
   const removeFile = (setter, files, index) => setter(files.filter((_, i) => i !== index));
 
-  const toggleBank = () => {
-    setUseBank((prev) => {
-      if (!prev) setSoalanFiles([]); // bila aktif bank, kosongkan fail soalan
-      return !prev;
-    });
-    setSelectedBankId(null);
-    setStatus('');
-    setProgress(0);
-  };
-
-  const switchBahagian = (next) => {
-    setBahagian(next);
-    setSelectedBankId(null); // soalan bank berbeza ikut bahagian
-  };
-
   const handleReset = () => {
     setResult(null); setGrade(null); setFeedback(null); setChatMessages([]); setStatus('');
     setProgress(0);
     setSoalanFiles([]); setKaranganFiles([]);
-    setSelectedBankId(null);
   };
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    const bankSoalanSelected = useBank ? selectedBankSoalan : null;
-
-    if (useBank) {
-      if (!bankSoalanSelected) {
-        setStatus('❌ Sila pilih satu soalan daripada Bank Soalan');
-        setProgress(0);
-        return;
-      }
-    } else if (soalanFiles.length === 0) {
+    if (soalanFiles.length === 0 || karanganFiles.length === 0) {
       setStatus('❌ Sila pilih sekurang-kurangnya satu fail untuk Soalan dan Karangan');
-      setProgress(0);
-      return;
-    }
-    if (karanganFiles.length === 0) {
-      setStatus('❌ Sila pilih sekurang-kurangnya satu fail Karangan');
       setProgress(0);
       return;
     }
     setResult(null); setGrade(null); setFeedback(null); setChatMessages([]);
 
-    // Langkah 1: simpan fail karangan (dan soalan jika ada) ke Storage
+    // Langkah 1: simpan fail ke Storage
     setStatus('Sedang memuat naik...');
     setProgress(10);
     const formData = new FormData();
     formData.append('bahagian', bahagian);
-    if (!useBank) soalanFiles.forEach((f) => formData.append('soalan', f));
+    soalanFiles.forEach((f) => formData.append('soalan', f));
     karanganFiles.forEach((f) => formData.append('karangan', f));
 
     try {
@@ -120,12 +78,7 @@ function Upload() {
       setProgress(50);
       const processRes = await fetch(`${API_URL}/process`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bahagian,
-          soalanPaths: uploadData.soalanPaths || [],
-          karanganPaths: uploadData.karanganPaths,
-          ...(bankSoalanSelected ? { soalanTextOverride: bankSoalanSelected.teks } : {}),
-        }),
+        body: JSON.stringify({ bahagian, soalanPaths: uploadData.soalanPaths, karanganPaths: uploadData.karanganPaths }),
       });
       const processData = await processRes.json();
       if (!processData.success) {
@@ -199,62 +152,24 @@ function Upload() {
             <p className="font-display text-xl font-semibold text-[#0F172A]">Analisis Karangan</p>
             <form onSubmit={handleUpload} className="bg-white rounded-2xl shadow-sm border border-black/5 p-6 flex flex-col gap-4">
               <div className="flex gap-1 bg-[#F8FAFC] rounded-xl p-1">
-                <button type="button" onClick={() => switchBahagian('A')}
+                <button type="button" onClick={() => setBahagian('A')}
                   className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${bahagian === 'A' ? 'bg-white text-[#2563EB] shadow-sm' : 'text-[#0F172A]/50'}`}>Bahagian A</button>
-                <button type="button" onClick={() => switchBahagian('B')}
+                <button type="button" onClick={() => setBahagian('B')}
                   className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${bahagian === 'B' ? 'bg-white text-[#2563EB] shadow-sm' : 'text-[#0F172A]/50'}`}>Bahagian B</button>
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-[#0F172A]/60">
-                    {useBank ? 'Soalan (dari Bank Soalan)' : 'Soalan (boleh pilih beberapa fail)'}
-                  </label>
-                  <button type="button" onClick={toggleBank}
-                    className={`text-xs font-medium rounded-lg px-3 py-1.5 border transition ${useBank
-                      ? 'bg-[#2563EB] border-[#2563EB] text-white'
-                      : 'bg-white border-[#2563EB] text-[#2563EB] hover:bg-[#EFF6FF]'}`}>
-                    {useBank ? '✓ Guna Soalan dari Bank' : 'Guna Soalan dari Bank'}
-                  </button>
-                </div>
-
-                {!useBank ? (
-                  <>
-                    <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
-                      onChange={handleFilesChange(setSoalanFiles)}
-                      className="w-full text-sm border border-black/10 rounded-xl px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#EFF6FF] file:text-[#2563EB] file:text-xs file:font-medium" />
-                    {soalanFiles.length > 0 && (
-                      <div className="flex flex-col gap-1 mt-2">
-                        {soalanFiles.map((f, i) => (
-                          <div key={i} className="flex items-center justify-between text-xs bg-[#F8FAFC] rounded-lg px-3 py-1.5">
-                            <span className="truncate">{i + 1}. {f.name}</span>
-                            <button type="button" onClick={() => removeFile(setSoalanFiles, soalanFiles, i)} className="text-[#F97362] ml-2 shrink-0">✕</button>
-                          </div>
-                        ))}
+                <label className="text-xs font-medium text-[#0F172A]/60 block mb-1.5">Soalan (boleh pilih beberapa fail)</label>
+                <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleFilesChange(setSoalanFiles)}
+                  className="w-full text-sm border border-black/10 rounded-xl px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#EFF6FF] file:text-[#2563EB] file:text-xs file:font-medium" />
+                {soalanFiles.length > 0 && (
+                  <div className="flex flex-col gap-1 mt-2">
+                    {soalanFiles.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs bg-[#F8FAFC] rounded-lg px-3 py-1.5">
+                        <span className="truncate">{i + 1}. {f.name}</span>
+                        <button type="button" onClick={() => removeFile(setSoalanFiles, soalanFiles, i)} className="text-[#F97362] ml-2 shrink-0">✕</button>
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {filteredBank.length === 0 && (
-                      <p className="text-sm text-[#0F172A]/40">Tiada soalan tersedia untuk bahagian ini.</p>
-                    )}
-                    {filteredBank.map((s) => (
-                      <button type="button" key={s.id} onClick={() => setSelectedBankId(s.id)}
-                        className={`text-left rounded-xl border p-4 transition ${selectedBankId === s.id
-                          ? 'border-[#2563EB] bg-[#EFF6FF] ring-1 ring-[#2563EB]'
-                          : 'border-black/10 hover:border-[#2563EB]/40'}`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium text-[#2563EB] bg-[#EFF6FF] rounded-full px-2 py-0.5">{s.jenis}</span>
-                          <span className="text-xs text-[#0F172A]/40">Bahagian {s.bahagian}</span>
-                        </div>
-                        {selectedBankId === s.id && (
-                          <p className="text-sm text-[#0F172A]/70 whitespace-pre-line mt-2">{s.teks}</p>
-                        )}
-                        {selectedBankId !== s.id && (
-                          <p className="text-sm text-[#0F172A]/50 line-clamp-2">{s.teks.slice(0, 120)}...</p>
-                        )}
-                      </button>
                     ))}
                   </div>
                 )}
