@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, Target, FileText, Type, PenLine } from 'lucide-react';
+import { Sparkles, Target, FileText, Type, PenLine, FlaskConical } from 'lucide-react';
+import WhatIfSimulator from './WhatIfSimulator';
 
 function ScoreRing({ score, max }) {
   const percentage = Math.min(100, (score / max) * 100);
@@ -21,8 +22,9 @@ function ScoreRing({ score, max }) {
   );
 }
 
-function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) {
+function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis, soalanText }) {
   const [expanded, setExpanded] = useState({});
+  const [activeWhatIf, setActiveWhatIf] = useState(null);
   const maxMarkah = bahagian === 'A' ? 30 : 70;
   const toggleExpand = (n) => setExpanded((prev) => ({ ...prev, [n]: !prev[n] }));
 
@@ -125,6 +127,14 @@ function ReportDisplay({ bahagian, wordCount, grade, feedback, onNewAnalysis }) 
                       <div><p className="text-xs font-semibold text-[#0F172A]/40 uppercase mb-1">Contoh Penambahbaikan</p>
                         <p className="text-[#0F172A]/40 line-through text-xs">{p.cadanganAyat.asal}</p>
                         <p className="text-[#2563EB] font-medium text-xs">{p.cadanganAyat.baharu}</p></div>
+                    )}
+                    {p.teksAsal && activeWhatIf !== p.nombor && (
+                      <button onClick={() => setActiveWhatIf(p.nombor)} className="self-start flex items-center gap-1.5 text-xs font-medium text-[#2563EB] bg-[#EFF6FF] hover:bg-[#DBEAFE] rounded-xl px-3 py-2 transition">
+                        <FlaskConical size={14} /> Cuba Eksperimen
+                      </button>
+                    )}
+                    {p.teksAsal && activeWhatIf === p.nombor && (
+                      <WhatIfSimulator originalText={p.teksAsal} soalanText={soalanText} onClose={() => setActiveWhatIf(null)} />
                     )}
                   </div>
                 )}

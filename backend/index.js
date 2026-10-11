@@ -569,6 +569,7 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text Baha
       "nombor": 1,
       "jenisPerenggan": "Pendahuluan",
       "tahap": "kukuh atau sederhana atau perlu_tambah_baik",
+      "teksAsal": "salin TEPAT teks perenggan itu daripada karangan pelajar, tanpa ubah apa-apa",
       "komen": "komen PENDEK 1-2 ayat, nada mesra",
       "kesalahanBahasa": ["hanya kesalahan ejaan/penggunaan kata/tanda baca yang jelas"],
       "cadanganKosaKata": ["asal -> cadangan (sebab)"],
@@ -662,6 +663,7 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text dala
       "nombor": 1,
       "jenisPerenggan": "Pendahuluan",
       "tahap": "kukuh atau sederhana atau perlu_tambah_baik",
+      "teksAsal": "salin TEPAT teks perenggan itu daripada karangan pelajar, tanpa ubah apa-apa",
       "komen": "komen PENDEK 1-2 ayat, nada mesra",
       "kesalahanBahasa": ["hanya kesalahan ejaan/penggunaan kata/tanda baca yang jelas"],
       "cadanganKosaKata": ["asal -> cadangan (sebab)"],
@@ -678,6 +680,88 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text dala
         role: 'user',
         content: [...soalanParts, ...karanganParts, { type: 'input_text', text: prompt }],
       }],
+    });
+
+    const cleanText = response.output_text.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(cleanText);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const WHATIF_EXPERIMENTS = {
+  perdalam_huraian: {
+    label: 'Perdalam Huraian',
+    penerangan: 'perdalam huraian isi sedia ada dengan lapisan sebab-akibat dan contoh yang lebih konkrit',
+  },
+  tambah_kbat: {
+    label: 'Tambah Unsur KBAT',
+    penerangan: 'tambah pemikiran kritis, penilaian dan sebab-akibat yang lebih mendalam',
+  },
+  kukuhkan_contoh: {
+    label: 'Kukuhkan Contoh',
+    penerangan: 'perkukuh contoh dengan detail konkrit yang lebih spesifik dan lebih kena dengan isi',
+  },
+  perbaiki_logik: {
+    label: 'Perbaiki Logik Hujah',
+    penerangan: 'perbaiki aliran fikiran supaya setiap ayat berhubung kait dan hujah lebih tersusun',
+  },
+  perjelas_ayat: {
+    label: 'Perjelas Ayat',
+    penerangan: 'perjelas ayat yang berbelit supaya maksud lebih mudah difahami dan lebih kemas',
+  },
+};
+
+app.post('/whatif', async (req, res) => {
+  const { originalText, experimentType, soalanText } = req.body;
+
+  if (!originalText || typeof originalText !== 'string' || !originalText.trim()) {
+    return res.status(400).json({ success: false, error: 'Teks asal perenggan tidak boleh kosong. Sila pilih perenggan yang ada teks asalnya.' });
+  }
+  if (!experimentType || !WHATIF_EXPERIMENTS[experimentType]) {
+    return res.status(400).json({
+      success: false,
+      error: 'Jenis eksperimen tidak sah. Pilih salah satu: perdalam_huraian, tambah_kbat, kukuhkan_contoh, perbaiki_logik, perjelas_ayat.',
+    });
+  }
+
+  const eksperimen = WHATIF_EXPERIMENTS[experimentType];
+
+  try {
+    const prompt = `Awak ialah mentor penulisan Bahasa Melayu yang mesra dan berpengalaman membantu pelajar tingkatkan mutu karangan.
+
+Pelajar nak cuba satu eksperimen what-if: tengok macam mana satu perenggan karangan dia boleh diperbaiki. PENTING: versi asal KEKAL dan tak akan diubah atau dibuang — kita cuma jana versi alternatif untuk dibandingkan.
+
+TEKS ASAL PERENGGAN:
+${originalText}
+
+JENIS EKSPERIMEN: ${eksperimen.label} — ${eksperimen.penerangan}
+
+KONTEKS SOALAN KARANGAN: ${soalanText || '(tiada)'}
+
+Arahan:
+1. Hasilkan versi baharu perenggan ni mengikut jenis eksperimen yang dipilih.
+2. JANGAN ubah idea utama pelajar sewenang-wenangnya — kekalkan isi asal, tambah atau perbaik sahaja ikut skop eksperimen.
+3. Tandakan setiap bahagian yang BARU atau yang BERUBAH dengan tanda [[...]] (contoh: [[ayat tambahan]]). Bahagian yang dikekalkan tulis biasa tanpa tanda.
+4. Beri penjelasan pedagogi: apa yang berubah, kenapa lebih baik, dan kemahiran apa yang pelajar belajar daripada perubahan ni.
+5. Beri perbandingan KUALITATIF antara versi asal dan versi baharu bagi kriteria yang relevan sahaja (kedalaman huraian, kejelasan isi, kekuatan hujah, kerelevanan contoh, hubungan sebab-akibat). Guna nilai tepat "lebih kukuh", "setanding", atau "perlu disemak", dan beri sebab berasaskan teks sebenar (bukan andaian kosong).
+6. JANGAN cipta atau ramal sebarang markah SPM, dan JANGAN dakwa markah pasti akan naik.
+
+Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua teks dalam Bahasa Melayu:
+{
+  "newTextMarked": "versi baharu perenggan, bahagian baru/berubah dibungkus dengan [[...]]",
+  "penjelasan": "penjelasan pedagogi: apa berubah, kenapa lebih baik, kemahiran apa dipelajari",
+  "kemahiran": ["2-4 kemahiran penulisan yang dipelajari daripada eksperimen ni"],
+  "perbandingan": [
+    { "kriteria": "kedalaman huraian", "nilai": "lebih kukuh atau setanding atau perlu disemak", "sebab": "sebab berasaskan teks sebenar" }
+  ]
+}`;
+
+    const response = await openaiClient.responses.create({
+      model: 'gpt-5.6',
+      temperature: 0.4,
+      input: prompt,
     });
 
     const cleanText = response.output_text.replace(/```json|```/g, '').trim();

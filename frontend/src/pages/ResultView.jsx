@@ -65,7 +65,7 @@ function ResultView() {
       <div className="flex-1 px-4 md:px-8 py-6 max-w-3xl w-full mx-auto flex flex-col gap-8">
         <button onClick={() => navigate('/karangan')} className="text-sm text-[#0F172A]/40 hover:text-[#0F172A]/70 transition self-start">← Kembali</button>
         <p className="text-xs text-[#0F172A]/40">{new Date(submission.created_at).toLocaleDateString('ms-MY')}</p>
-        <ReportDisplay bahagian={submission.bahagian} wordCount={submission.word_count} grade={submission.grade_data} feedback={submission.feedback_data} />
+        <ReportDisplay bahagian={submission.bahagian} wordCount={submission.word_count} grade={submission.grade_data} feedback={submission.feedback_data} soalanText={submission.soalan_text} />
 
         <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 flex flex-col gap-3">
           <p className="font-display font-semibold text-[#0F172A] flex items-center gap-2"><MessageCircle size={18} />Tanya Cikgu AI</p>

@@ -218,7 +218,7 @@ function Upload() {
 
         {feedback && result && grade && (
           <>
-            <ReportDisplay bahagian={bahagian} wordCount={result.wordCount} grade={grade} feedback={feedback} onNewAnalysis={handleReset} />
+            <ReportDisplay bahagian={bahagian} wordCount={result.wordCount} grade={grade} feedback={feedback} soalanText={result.soalanText} onNewAnalysis={handleReset} />
 
             <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 flex flex-col gap-3">
               <p className="font-display font-semibold text-[#0F172A] flex items-center gap-2"><MessageCircle size={18} />Tanya Cikgu AI</p>
