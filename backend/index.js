@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const supabase = require('./supabaseClient');
 const { RUBRIK_BAHAGIAN_A, RUBRIK_BAHAGIAN_B } = require('./rubric');
+const { SOALAN_BANK } = require('./soalanBank');
 const OpenAI = require('openai');
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -45,6 +46,10 @@ app.get('/', (req, res) => {
   res.json({ message: 'Karangan A+ backend is running!' });
 });
 
+app.get('/soalan-bank', (req, res) => {
+  res.json({ success: true, bank: SOALAN_BANK });
+});
+
 app.get('/test-supabase', async (req, res) => {
   const { data, error } = await supabase.auth.getSession();
   if (error) return res.status(500).json({ success: false, error: error.message });
@@ -72,8 +77,8 @@ app.post('/upload', upload.fields([
     const soalanFiles = req.files?.soalan || [];
     const karanganFiles = req.files?.karangan || [];
 
-    if (!bahagian || soalanFiles.length === 0 || karanganFiles.length === 0) {
-      return res.status(400).json({ success: false, error: 'Bahagian, soalan, dan karangan semua wajib diisi' });
+    if (!bahagian || (soalanFiles.length === 0 && karanganFiles.length === 0)) {
+      return res.status(400).json({ success: false, error: 'Bahagian dan sekurang-kurangnya satu fail soalan atau karangan wajib diisi' });
     }
 
     const allFiles = [...soalanFiles, ...karanganFiles];
@@ -592,18 +597,24 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text Baha
 });
 
 app.post('/process', async (req, res) => {
-  const { bahagian, soalanPaths, karanganPaths } = req.body;
-  if (!bahagian || !soalanPaths?.length || !karanganPaths?.length) {
-    return res.status(400).json({ success: false, error: 'bahagian, soalanPaths, dan karanganPaths diperlukan' });
+  const { bahagian, soalanPaths, karanganPaths, soalanTextOverride } = req.body;
+  if (!bahagian || !karanganPaths?.length || (!soalanTextOverride && !soalanPaths?.length)) {
+    return res.status(400).json({ success: false, error: 'bahagian, karanganPaths, dan soalanPaths atau soalanTextOverride diperlukan' });
   }
 
   try {
     const soalanParts = [];
-    for (let i = 0; i < soalanPaths.length; i++) {
-      const { data: blob, error } = await supabase.storage.from('karangan-uploads').download(soalanPaths[i]);
-      if (error) throw new Error(error.message);
-      const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
-      soalanParts.push(buildContentPart(blob, base64, `soalan-${i + 1}`));
+    let soalanLabel = 'rujuk fail soalan yang dilamparkan.';
+    if (soalanTextOverride) {
+      // Soalan dari Bank Soalan — terus guna teks, tak perlu vision untuk soalan
+      soalanLabel = soalanTextOverride;
+    } else {
+      for (let i = 0; i < soalanPaths.length; i++) {
+        const { data: blob, error } = await supabase.storage.from('karangan-uploads').download(soalanPaths[i]);
+        if (error) throw new Error(error.message);
+        const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
+        soalanParts.push(buildContentPart(blob, base64, `soalan-${i + 1}`));
+      }
     }
 
     const karanganParts = [];
@@ -625,7 +636,7 @@ BUAT SEMUA NI DALAM SATU RESPONS SAHAJA: sahkan fail, extract teks, kira perkata
 RUBRIK RASMI:
 ${rubrik}
 
-SOALAN: rujuk fail soalan yang dilamparkan.
+SOALAN: ${soalanLabel}
 KARANGAN: rujuk fail karangan yang dilamparkan.
 Had patah perkataan rasmi Bahagian ${bahagian}: ${limit}.
 
