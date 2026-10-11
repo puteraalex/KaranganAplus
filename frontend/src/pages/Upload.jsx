@@ -56,6 +56,8 @@ function Upload() {
       return;
     }
     setResult(null); setGrade(null); setFeedback(null); setChatMessages([]);
+
+    // Langkah 1: simpan fail ke Storage
     setStatus('Sedang memuat naik...');
     setProgress(10);
     const formData = new FormData();
@@ -71,44 +73,34 @@ function Upload() {
         return setStatus(`Analisis tidak dapat dilakukan. ${uploadData.error}`);
       }
 
-      setStatus('Sedang menganalisis karangan anda... AI sedang menyemak kandungan, bahasa dan struktur penulisan.');
-      setProgress(40);
-      const analyzeRes = await fetch(`${API_URL}/analyze`, {
+      // Langkah 2: SATU panggilan /process — validate, extract, markah, feedback
+      setStatus('Sedang menganalisis dan menilai karangan anda... AI sedang menyemak kandungan, bahasa, struktur dan menjana maklum balas per-perenggan.');
+      setProgress(50);
+      const processRes = await fetch(`${API_URL}/process`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soalanPaths: uploadData.soalanPaths, karanganPaths: uploadData.karanganPaths }),
+        body: JSON.stringify({ bahagian, soalanPaths: uploadData.soalanPaths, karanganPaths: uploadData.karanganPaths }),
       });
-      const analyzeData = await analyzeRes.json();
-      if (!analyzeData.success) {
+      const processData = await processRes.json();
+      if (!processData.success) {
         setProgress(0);
-        return setStatus(`Analisis tidak dapat dilakukan. ${analyzeData.error}`);
+        return setStatus(`Analisis tidak dapat dilakukan. ${processData.error}`);
       }
-      if (!analyzeData.valid) {
+      if (!processData.valid) {
         setProgress(0);
-        return setStatus(`Fail tidak sah: ${analyzeData.reason}`);
-      }
-      setResult(analyzeData);
-
-      const understandRes = await fetch(`${API_URL}/understand`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bahagian, soalanText: analyzeData.soalanText, karanganText: analyzeData.karanganText, wordCount: analyzeData.wordCount }),
-      });
-      setStatus('Sedang menilai dan menjana maklum balas...');
-      setProgress(75);
-      const evalRes = await fetch(`${API_URL}/evaluate`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bahagian, soalanText: analyzeData.soalanText, karanganText: analyzeData.karanganText, wordCount: analyzeData.wordCount }),
-      });
-      const evalData = await evalRes.json();
-      if (!evalData.success) {
-        setProgress(0);
-        return setStatus(`Analisis tidak dapat dilakukan. ${evalData.error}`);
+        return setStatus(`Fail tidak sah: ${processData.reason}`);
       }
 
-      const gradeData = {
-        markah: evalData.markah, peringkat: evalData.peringkat, justifikasi: evalData.justifikasi,
-        kekuatan: evalData.kekuatan, kelemahan: evalData.kelemahan, fokusUtama: evalData.fokusUtama, rumusan: evalData.rumusan,
+      const resultData = {
+        soalanText: processData.soalanText,
+        karanganText: processData.karanganText,
+        wordCount: processData.wordCount,
       };
-      const feedbackData = { perenggan: evalData.perenggan };
+      const gradeData = {
+        markah: processData.markah, peringkat: processData.peringkat, justifikasi: processData.justifikasi,
+        kekuatan: processData.kekuatan, kelemahan: processData.kelemahan, fokusUtama: processData.fokusUtama, rumusan: processData.rumusan,
+      };
+      const feedbackData = { perenggan: processData.perenggan };
+      setResult(resultData);
       setGrade(gradeData);
       setFeedback(feedbackData);
       setProgress(100);
@@ -118,8 +110,8 @@ function Upload() {
       fetch(`${API_URL}/save-submission`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id, bahagian, soalanText: analyzeData.soalanText, karanganText: analyzeData.karanganText,
-          wordCount: analyzeData.wordCount, grade: gradeData, feedback: feedbackData,
+          userId: user.id, bahagian, soalanText: processData.soalanText, karanganText: processData.karanganText,
+          wordCount: processData.wordCount, grade: gradeData, feedback: feedbackData,
         }),
       });
     } catch {

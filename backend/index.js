@@ -591,6 +591,103 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text Baha
   }
 });
 
+app.post('/process', async (req, res) => {
+  const { bahagian, soalanPaths, karanganPaths } = req.body;
+  if (!bahagian || !soalanPaths?.length || !karanganPaths?.length) {
+    return res.status(400).json({ success: false, error: 'bahagian, soalanPaths, dan karanganPaths diperlukan' });
+  }
+
+  try {
+    const soalanParts = [];
+    for (let i = 0; i < soalanPaths.length; i++) {
+      const { data: blob, error } = await supabase.storage.from('karangan-uploads').download(soalanPaths[i]);
+      if (error) throw new Error(error.message);
+      const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
+      soalanParts.push(buildContentPart(blob, base64, `soalan-${i + 1}`));
+    }
+
+    const karanganParts = [];
+    for (let i = 0; i < karanganPaths.length; i++) {
+      const { data: blob, error } = await supabase.storage.from('karangan-uploads').download(karanganPaths[i]);
+      if (error) throw new Error(error.message);
+      const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
+      karanganParts.push(buildContentPart(blob, base64, `karangan-${i + 1}`));
+    }
+
+    const rubrik = bahagian === 'A' ? RUBRIK_BAHAGIAN_A : RUBRIK_BAHAGIAN_B;
+    const maxMarkah = bahagian === 'A' ? 30 : 70;
+    const limit = bahagian === 'A' ? '150-200' : '350-500';
+
+    const prompt = `Awak ialah pemeriksa SPM Bahasa Melayu yang berpengalaman dan mesra. Fail-fail ni (PDF atau imej) dihantar ikut TURUTAN — anggap SEMUA fail soalan sebagai SATU dokumen soalan berterusan, dan SEMUA fail karangan sebagai SATU karangan berterusan (mungkin beberapa muka surat karangan panjang).
+
+BUAT SEMUA NI DALAM SATU RESPONS SAHAJA: sahkan fail, extract teks, kira perkataan, nilai ikut rubrik, dan beri feedback setiap perenggan.
+
+RUBRIK RASMI:
+${rubrik}
+
+SOALAN: rujuk fail soalan yang dilamparkan.
+KARANGAN: rujuk fail karangan yang dilamparkan.
+Had patah perkataan rasmi Bahagian ${bahagian}: ${limit}.
+
+PENTING - VALIDASI: "valid" = false jika fail bukan soalan/karangan BM yang sah (kosong, subjek lain, tak berkaitan). Jika valid=false, kosongkan semua field lain dan isi "reason" sahaja.
+
+PENTING - CADANGAN: semua cadangan (kosa kata, peribahasa, ayat baharu) MESTI pendek dan sesuai gaya asal.
+
+PENTING - KESALAHAN BAHASA: Dalam senarai "kesalahanBahasa" setiap perenggan, HANYA masukkan kesalahan yang JELAS dan OBJEKTIF — seperti kesalahan EJAAN, kesalahan PENGGUNAAN KATA (perkataan yang salah maksud/tidak tepat), atau kesalahan TANDA BACA. JANGAN masukkan ayat yang sekadar terasa "kurang gramatis" atau sekadar gaya penulisan berbeza daripada gaya formal — kesalahan mesti jelas dan boleh dibuktikan salah, bukan tanggapan subjektif.
+
+PENTING - KONSISTENSI MARKAH: Sebelum beri markah akhir, semak semula ia berada dalam julat band yang betul ikut rubrik. Pastikan konsisten — essay dengan kualiti sama patut dapat markah yang sama.
+
+Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text dalam Bahasa Melayu:
+{
+  "valid": true atau false,
+  "reason": "sebab ringkas jika valid=false, kosongkan string jika valid=true",
+  "soalanText": "teks soalan yang di-extract (gabungkan semua muka surat)",
+  "karanganText": "teks karangan yang di-extract (gabungkan semua muka surat ikut turutan)",
+  "wordCount": jumlah patah perkataan dalam karangan sahaja (integer),
+  "jenisSoalan": "jenis soalan (Pendapat/Punca/Langkah/Cerita/Surat Rasmi, dll)",
+  "strukturLengkap": true atau false (ada pendahuluan, isi, dan penutup yang jelas),
+  "markah": nombor markah akhir (integer, 0 hingga ${maxMarkah}),
+  "peringkat": "nama peringkat (Cemerlang/Kepujian/Baik/Memuaskan/Kurang Memuaskan/Pencapaian Minimum)",
+  "justifikasi": { "temaTugasan": "...", "idea": "...", "bahasa": "...", "pengolahan": "..." },
+  "kekuatan": ["senarai 2-4 kekuatan"],
+  "kelemahan": ["senarai 2-4 kelemahan"],
+  "fokusUtama": [
+    { "tajuk": "...", "penerangan": "..." },
+    { "tajuk": "...", "penerangan": "..." },
+    { "tajuk": "...", "penerangan": "..." }
+  ],
+  "rumusan": "rumusan keseluruhan 2-3 ayat",
+  "perenggan": [
+    {
+      "nombor": 1,
+      "jenisPerenggan": "Pendahuluan",
+      "tahap": "kukuh atau sederhana atau perlu_tambah_baik",
+      "komen": "komen PENDEK 1-2 ayat, nada mesra",
+      "kesalahanBahasa": ["hanya kesalahan ejaan/penggunaan kata/tanda baca yang jelas"],
+      "cadanganKosaKata": ["asal -> cadangan (sebab)"],
+      "cadanganPeribahasa": ["..."],
+      "cadanganAyat": { "asal": "...", "baharu": "...", "sebab": "..." }
+    }
+  ]
+}`;
+
+    const response = await openaiClient.responses.create({
+      model: 'gpt-5.6',
+      temperature: 0.3,
+      input: [{
+        role: 'user',
+        content: [...soalanParts, ...karanganParts, { type: 'input_text', text: prompt }],
+      }],
+    });
+
+    const cleanText = response.output_text.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(cleanText);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
