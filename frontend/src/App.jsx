@@ -7,6 +7,7 @@ import Profile from './pages/Profile';
 import ResultView from './pages/ResultView';
 import KaranganList from './pages/KaranganList';
 import Prestasi from './pages/Prestasi';
+import ResetPassword from './pages/ResetPassword';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/result/:id" element={<ResultView />} />

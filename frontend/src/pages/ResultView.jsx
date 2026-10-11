@@ -32,23 +32,6 @@ function ResultView() {
     });
   }, [id, navigate]);
 
-  const handleDownloadReport = async () => {
-    if (!submission) return;
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const res = await fetch(`${API_URL}/report`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentEmail: user?.email, bahagian: submission.bahagian, grade: submission.grade_data, feedback: submission.feedback_data }),
-      });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'laporan-karangan.pdf'; a.click();
-      window.URL.revokeObjectURL(url);
-    } catch { /* silent */ }
-  };
-
   const handleSendChat = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !submission) return;
@@ -82,11 +65,6 @@ function ResultView() {
         <button onClick={() => navigate('/karangan')} className="text-sm text-[#0F172A]/40 hover:text-[#0F172A]/70 transition self-start">← Kembali</button>
         <p className="text-xs text-[#0F172A]/40">{new Date(submission.created_at).toLocaleDateString('ms-MY')}</p>
         <ReportDisplay bahagian={submission.bahagian} wordCount={submission.word_count} grade={submission.grade_data} feedback={submission.feedback_data} />
-
-        <button onClick={handleDownloadReport}
-          className="w-full bg-white border-2 border-[#2563EB] text-[#2563EB] hover:bg-[#EFF6FF] rounded-xl py-3 font-medium transition">
-          📄 Muat Turun Laporan PDF
-        </button>
 
         <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 flex flex-col gap-3">
           <p className="font-display font-semibold text-[#0F172A]">💬 Tanya Cikgu AI</p>

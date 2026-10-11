@@ -10,6 +10,7 @@ function Upload() {
   const [soalanFiles, setSoalanFiles] = useState([]);
   const [karanganFiles, setKaranganFiles] = useState([]);
   const [status, setStatus] = useState('');
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [grade, setGrade] = useState(null);
   const [feedback, setFeedback] = useState(null);
@@ -32,6 +33,7 @@ function Upload() {
     const oversized = files.find((f) => f.size > MAX_SIZE);
     if (oversized) {
       setStatus(`❌ Fail "${oversized.name}" terlalu besar (max 10MB)`);
+      setProgress(0);
       e.target.value = '';
       return;
     }
@@ -42,6 +44,7 @@ function Upload() {
 
   const handleReset = () => {
     setResult(null); setGrade(null); setFeedback(null); setChatMessages([]); setStatus('');
+    setProgress(0);
     setSoalanFiles([]); setKaranganFiles([]);
   };
 
@@ -49,10 +52,12 @@ function Upload() {
     e.preventDefault();
     if (soalanFiles.length === 0 || karanganFiles.length === 0) {
       setStatus('❌ Sila pilih sekurang-kurangnya satu fail untuk Soalan dan Karangan');
+      setProgress(0);
       return;
     }
     setResult(null); setGrade(null); setFeedback(null); setChatMessages([]);
     setStatus('Sedang memuat naik...');
+    setProgress(10);
     const formData = new FormData();
     formData.append('bahagian', bahagian);
     soalanFiles.forEach((f) => formData.append('soalan', f));
@@ -61,29 +66,43 @@ function Upload() {
     try {
       const uploadRes = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
       const uploadData = await uploadRes.json();
-      if (!uploadData.success) return setStatus(`Analisis tidak dapat dilakukan. ${uploadData.error}`);
+      if (!uploadData.success) {
+        setProgress(0);
+        return setStatus(`Analisis tidak dapat dilakukan. ${uploadData.error}`);
+      }
 
       setStatus('Sedang menganalisis karangan anda... AI sedang menyemak kandungan, bahasa dan struktur penulisan.');
+      setProgress(40);
       const analyzeRes = await fetch(`${API_URL}/analyze`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ soalanPaths: uploadData.soalanPaths, karanganPaths: uploadData.karanganPaths }),
       });
       const analyzeData = await analyzeRes.json();
-      if (!analyzeData.success) return setStatus(`Analisis tidak dapat dilakukan. ${analyzeData.error}`);
-      if (!analyzeData.valid) return setStatus(`Fail tidak sah: ${analyzeData.reason}`);
+      if (!analyzeData.success) {
+        setProgress(0);
+        return setStatus(`Analisis tidak dapat dilakukan. ${analyzeData.error}`);
+      }
+      if (!analyzeData.valid) {
+        setProgress(0);
+        return setStatus(`Fail tidak sah: ${analyzeData.reason}`);
+      }
       setResult(analyzeData);
 
       const understandRes = await fetch(`${API_URL}/understand`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bahagian, soalanText: analyzeData.soalanText, karanganText: analyzeData.karanganText, wordCount: analyzeData.wordCount }),
       });
-            setStatus('Sedang menilai dan menjana maklum balas...');
+      setStatus('Sedang menilai dan menjana maklum balas...');
+      setProgress(75);
       const evalRes = await fetch(`${API_URL}/evaluate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bahagian, soalanText: analyzeData.soalanText, karanganText: analyzeData.karanganText, wordCount: analyzeData.wordCount }),
       });
       const evalData = await evalRes.json();
-      if (!evalData.success) return setStatus(`Analisis tidak dapat dilakukan. ${evalData.error}`);
+      if (!evalData.success) {
+        setProgress(0);
+        return setStatus(`Analisis tidak dapat dilakukan. ${evalData.error}`);
+      }
 
       const gradeData = {
         markah: evalData.markah, peringkat: evalData.peringkat, justifikasi: evalData.justifikasi,
@@ -92,6 +111,7 @@ function Upload() {
       const feedbackData = { perenggan: evalData.perenggan };
       setGrade(gradeData);
       setFeedback(feedbackData);
+      setProgress(100);
       setStatus('');
 
       const { data: { user } } = await supabase.auth.getUser();
@@ -103,24 +123,9 @@ function Upload() {
         }),
       });
     } catch {
+      setProgress(0);
       setStatus('Gagal berhubung dengan pelayan. Sila cuba lagi.');
     }
-  };
-
-  const handleDownloadReport = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const res = await fetch(`${API_URL}/report`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentEmail: user?.email, bahagian, grade, feedback }),
-      });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'laporan-karangan.pdf'; a.click();
-      window.URL.revokeObjectURL(url);
-    } catch { /* silent */ }
   };
 
   const handleSendChat = async (e) => {
@@ -199,10 +204,19 @@ function Upload() {
                 className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl py-3 font-medium transition disabled:opacity-60">
                 Mula Analisis
               </button>
+
+              {isProcessing && (
+                <div className="w-full h-2 bg-[#EFF6FF] rounded-full overflow-hidden">
+                  <div className="h-full bg-[#2563EB] rounded-full transition-all duration-700"
+                    style={{ width: `${progress}%` }} />
+                </div>
+              )}
+
               {status && (
                 <div className="flex items-center justify-center gap-2 text-sm text-[#0F172A]/60 text-center">
                   {isProcessing && <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-pulse shrink-0" />}
                   <span>{status}</span>
+                  {isProcessing && <span className="font-medium text-[#2563EB] shrink-0">{progress}%</span>}
                 </div>
               )}
             </form>
@@ -212,11 +226,6 @@ function Upload() {
         {feedback && result && grade && (
           <>
             <ReportDisplay bahagian={bahagian} wordCount={result.wordCount} grade={grade} feedback={feedback} onNewAnalysis={handleReset} />
-
-            <button onClick={handleDownloadReport}
-              className="w-full bg-white border-2 border-[#2563EB] text-[#2563EB] hover:bg-[#EFF6FF] rounded-xl py-3 font-medium transition">
-              📄 Muat Turun Laporan PDF
-            </button>
 
             <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 flex flex-col gap-3">
               <p className="font-display font-semibold text-[#0F172A]">💬 Tanya Cikgu AI</p>
