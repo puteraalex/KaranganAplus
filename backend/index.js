@@ -16,6 +16,102 @@ const PDFDocument = require('pdfkit');
 app.use(cors());
 app.use(express.json());
 
+// ===== Jelajah Idea: helper =====
+const ZON_SAHA = ['huraian', 'contoh', 'kbat', 'ayat'];
+const STRATEGI_SAHA = ['sebab_akibat', 'contoh', 'kbat', 'ayat'];
+const KEPUTUSAN_SAHA = ['terima', 'tolak', 'edit', 'guna_sendiri'];
+const AMBANG_XP = [0, 30, 80, 150, 250];
+const LENCANA = [
+  { id: 'pakar_huraian', nama: 'Pakar Huraian', zon: 'huraian' },
+  { id: 'pemburu_hujah', nama: 'Pemburu Hujah', zon: 'contoh' },
+  { id: 'penguasa_kbat', nama: 'Penguasa KBAT', zon: 'kbat' },
+  { id: 'penggilap_ayat', nama: 'Penggilap Ayat', zon: 'ayat' },
+];
+const LABEL_STRATEGI = {
+  sebab_akibat: 'Sebab-Akibat: perkukuh hubungan sebab dan akibat dalam hujah',
+  contoh: 'Contoh: tambah contoh yang konkrit dan kena dengan isi',
+  kbat: 'KBAT: tambah pemikiran kritis, penilaian dan andaian berasaskan teks',
+  ayat: 'Ayat: perjelas dan kemas ayat supaya maksud lebih mudah difahami',
+};
+
+function normalisasiRuang(teks) {
+  return String(teks || '').replace(/\s+/g, ' ').trim();
+}
+
+// Sahkan akses token Supabase. Pulangkan user.id, atau hantar 401 dan pulangkan null.
+async function requireUser(req, res) {
+  try {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    if (!token) {
+      res.status(401).json({ success: false, error: 'Sesi anda telah tamat. Sila log masuk semula.' });
+      return null;
+    }
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user?.id) {
+      res.status(401).json({ success: false, error: 'Sesi anda telah tamat. Sila log masuk semula.' });
+      return null;
+    }
+    return data.user.id;
+  } catch {
+    res.status(401).json({ success: false, error: 'Sesi anda telah tamat. Sila log masuk semula.' });
+    return null;
+  }
+}
+
+// Buang misi yang tak sah: zon bukan salah satu zon sah, petikan bukan salinan tepat
+// daripada teksAsal perenggan itu, atau lebih daripada satu misi bagi zon yang sama.
+function sahkanMisi(result) {
+  const senaraiMisi = Array.isArray(result?.misi) ? result.misi : [];
+  const perenggan = Array.isArray(result?.perenggan) ? result.perenggan : [];
+  const digunakan = new Set();
+  const ditapis = [];
+
+  for (const m of senaraiMisi) {
+    if (!m || typeof m !== 'object') continue;
+    if (!ZON_SAHA.includes(m.zon)) continue;
+    const nombor = Number(m.perenggan);
+    if (!Number.isInteger(nombor)) continue;
+    const kunci = `${m.zon}:${nombor}`;
+    if (digunakan.has(kunci)) continue;
+
+    const p = perenggan.find((x) => Number(x?.nombor) === nombor);
+    const teksAsal = typeof p?.teksAsal === 'string' ? p.teksAsal : '';
+    const petikan = typeof m.petikan === 'string' ? m.petikan.trim() : '';
+    const sebab = typeof m.sebab === 'string' ? m.sebab.trim() : '';
+    const soalanFikir = typeof m.soalanFikir === 'string' ? m.soalanFikir.trim() : '';
+    if (!teksAsal || !petikan || !sebab || !soalanFikir) continue;
+    if (!normalisasiRuang(teksAsal).includes(normalisasiRuang(petikan))) continue;
+
+    digunakan.add(kunci);
+    ditapis.push({ zon: m.zon, perenggan: nombor, petikan, sebab, soalanFikir });
+    if (ditapis.length >= 4) break;
+  }
+
+  result.misi = ditapis.map((m, i) => ({ id: `m${i + 1}`, ...m }));
+  return result;
+}
+
+function isRalatKolumTiada(error) {
+  if (!error) return false;
+  return /42703|PGRST204|does not exist|column/i.test(`${error.code || ''} ${error.message || ''}`);
+}
+
+function isRalatUnik(error) {
+  if (!error) return false;
+  return /23505|duplicate key|unique/i.test(`${error.code || ''} ${error.message || ''}`);
+}
+
+// Simpan cubaan Jelajah Idea. Jika jadual belum ada kolum refleksi, buang dan cuba lagi.
+async function simpanCubaan(row) {
+  let hasil = await supabase.from('jelajah_attempts').insert(row).select().single();
+  if (isRalatKolumTiada(hasil.error) && 'refleksi' in row) {
+    const { refleksi, ...tanpaRefleksi } = row;
+    hasil = await supabase.from('jelajah_attempts').insert(tanpaRefleksi).select().single();
+  }
+  return hasil;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
@@ -638,6 +734,15 @@ PENTING - KESALAHAN BAHASA: Dalam senarai "kesalahanBahasa" setiap perenggan, HA
 
 PENTING - KONSISTENSI MARKAH: Sebelum beri markah akhir, semak semula ia berada dalam julat band yang betul ikut rubrik. Pastikan konsisten — essay dengan kualiti sama patut dapat markah yang sama.
 
+PENTING - MISI JELAJAH IDEA: Hasilkan 2 hingga 4 objek dalam "misi" SAHAJA kalau memang ada kelemahan sebenar dalam karangan ni.
+- Setiap misi MESTI daripada kelemahan sebenar dalam karangan ini, bukan cabaran rawak. JANGAN cipta misi bagi zon yang sudah kukuh.
+- Zon: "huraian" (kedalaman huraian), "contoh" (contoh dan hujah), "kbat" (pemikiran kritis dan penilaian), "ayat" (kejelasan dan keterampilan ayat).
+- "petikan" ialah 1-2 ayat yang diambil TEKAT daripada "teksAsal" perenggan yang sama (salinan tepat, tiada ubahan langsung).
+- "sebab" ialah 1-2 ayat berdasarkan petikan tu — kenapa ia kelemahan nyata dalam konteks soalan ni.
+- "soalanFikir" ialah SATU soalan ringkas yang buat pelajar berfikir dulu sebelum nampak cadangan AI.
+- Maksimum SATU misi bagi setiap zon bagi setiap perenggan.
+- JANGAN ubah markah atau mana-mana field lain kerana misi ni.
+
 Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text dalam Bahasa Melayu:
 {
   "valid": true atau false,
@@ -670,6 +775,16 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text dala
       "cadanganPeribahasa": ["..."],
       "cadanganAyat": { "asal": "...", "baharu": "...", "sebab": "..." }
     }
+  ],
+  "misi": [
+    {
+      "id": "m1",
+      "zon": "huraian",
+      "perenggan": nombor perenggan (integer),
+      "petikan": "1-2 ayat TEKAT diambil daripada teksAsal perenggan yang sama",
+      "sebab": "1-2 ayat: kenapa petikan ni kelemahan nyata",
+      "soalanFikir": "satu soalan ringkas yang buat pelajar berfikir sebelum nampak cadangan AI"
+    }
   ]
 }`;
 
@@ -684,78 +799,83 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua text dala
 
     const cleanText = response.output_text.replace(/```json|```/g, '').trim();
     const result = JSON.parse(cleanText);
+    sahkanMisi(result);
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-const WHATIF_EXPERIMENTS = {
-  perdalam_huraian: {
-    label: 'Perdalam Huraian',
-    penerangan: 'perdalam huraian isi sedia ada dengan lapisan sebab-akibat dan contoh yang lebih konkrit',
-  },
-  tambah_kbat: {
-    label: 'Tambah Unsur KBAT',
-    penerangan: 'tambah pemikiran kritis, penilaian dan sebab-akibat yang lebih mendalam',
-  },
-  kukuhkan_contoh: {
-    label: 'Kukuhkan Contoh',
-    penerangan: 'perkukuh contoh dengan detail konkrit yang lebih spesifik dan lebih kena dengan isi',
-  },
-  perbaiki_logik: {
-    label: 'Perbaiki Logik Hujah',
-    penerangan: 'perbaiki aliran fikiran supaya setiap ayat berhubung kait dan hujah lebih tersusun',
-  },
-  perjelas_ayat: {
-    label: 'Perjelas Ayat',
-    penerangan: 'perjelas ayat yang berbelit supaya maksud lebih mudah difahami dan lebih kemas',
-  },
-};
-
-app.post('/whatif', async (req, res) => {
-  const { originalText, experimentType, soalanText } = req.body;
-
-  if (!originalText || typeof originalText !== 'string' || !originalText.trim()) {
-    return res.status(400).json({ success: false, error: 'Teks asal perenggan tidak boleh kosong. Sila pilih perenggan yang ada teks asalnya.' });
-  }
-  if (!experimentType || !WHATIF_EXPERIMENTS[experimentType]) {
-    return res.status(400).json({
-      success: false,
-      error: 'Jenis eksperimen tidak sah. Pilih salah satu: perdalam_huraian, tambah_kbat, kukuhkan_contoh, perbaiki_logik, perjelas_ayat.',
-    });
-  }
-
-  const eksperimen = WHATIF_EXPERIMENTS[experimentType];
-
+// ===== Jelajah Idea: eksperimen =====
+app.post('/jelajah/eksperimen', async (req, res) => {
   try {
-    const prompt = `Awak ialah mentor penulisan Bahasa Melayu yang mesra dan berpengalaman membantu pelajar tingkatkan mutu karangan.
+    const userId = await requireUser(req, res);
+    if (!userId) return;
 
-Pelajar nak cuba satu eksperimen what-if: tengok macam mana satu perenggan karangan dia boleh diperbaiki. PENTING: versi asal KEKAL dan tak akan diubah atau dibuang — kita cuma jana versi alternatif untuk dibandingkan.
+    const { submissionId, misiId, strategi, percubaanPelajar } = req.body || {};
+    if (!submissionId || !misiId) {
+      return res.status(400).json({ success: false, error: 'Misi tidak lengkap. Sila muat semula result karangan dan cuba lagi.' });
+    }
+    if (!STRATEGI_SAHA.includes(strategi)) {
+      return res.status(400).json({ success: false, error: 'Strategi tidak sah. Pilih sebab_akibat, contoh, kbat atau ayat.' });
+    }
 
-TEKS ASAL PERENGGAN:
-${originalText}
+    const { data: submission, error: subError } = await supabase
+      .from('submissions')
+      .select('id, user_id, soalan_text, feedback_data')
+      .eq('id', submissionId)
+      .single();
+    if (subError || !submission) {
+      return res.status(404).json({ success: false, error: 'Karangan tidak dijumpai. Sila cuba lagi dari halaman result.' });
+    }
+    if (submission.user_id !== userId) {
+      return res.status(403).json({ success: false, error: 'Anda tiada akses untuk karangan ini.' });
+    }
 
-JENIS EKSPERIMEN: ${eksperimen.label} — ${eksperimen.penerangan}
+    const feedback = submission.feedback_data || {};
+    const misi = (Array.isArray(feedback.misi) ? feedback.misi : []).find((m) => m?.id === misiId);
+    const perenggan = (Array.isArray(feedback.perenggan) ? feedback.perenggan : [])
+      .find((p) => Number(p?.nombor) === Number(misi?.perenggan));
+    const teksAsal = typeof perenggan?.teksAsal === 'string' ? perenggan.teksAsal : '';
+    if (!misi || !teksAsal.trim()) {
+      return res.status(404).json({ success: false, error: 'Karangan lama ni tiada misi Jelajah Idea. Sila buat analisis karangan baharu untuk mula menjelajah.' });
+    }
 
-KONTEKS SOALAN KARANGAN: ${soalanText || '(tiada)'}
+    const percubaan = typeof percubaanPelajar === 'string' && percubaanPelajar.trim() ? percubaanPelajar.trim() : '';
 
+    const prompt = `Awak ialah mentor penulisan Bahasa Melayu yang mesra dan berpengalaman. Pelajar nak cuba satu MISI JELAJAH IDEA untuk memperbaiki satu kelemahan sebenar dalam karangan dia. Teks asal KEKAL dan tidak diubah — kita cuma jana versi cadangan untuk dibandingkan.
+
+TEKS ASAL PERENGGAN ${misi.perenggan}:
+${teksAsal}
+
+MISI (zon: ${misi.zon}):
+- Petikan bermasalah: "${misi.petikan}"
+- Sebab kelemahan: ${misi.sebab}
+- Soalan fikir untuk pelajar: ${misi.soalanFikir}
+
+STRATEGI DIPILIH: ${LABEL_STRATEGI[strategi] || strategi}
+KONTEKS SOALAN KARANGAN: ${submission.soalan_text || '(tiada)'}
+${percubaan ? `\nPERCUBAAN PELAJAR (ditulis SEBELUM nampak cadangan AI):\n${percubaan}\n` : ''}
 Arahan:
-1. Hasilkan versi baharu perenggan ni mengikut jenis eksperimen yang dipilih.
-2. JANGAN ubah idea utama pelajar sewenang-wenangnya — kekalkan isi asal, tambah atau perbaik sahaja ikut skop eksperimen.
-3. Tandakan setiap bahagian yang BARU atau yang BERUBAH dengan tanda [[...]] (contoh: [[ayat tambahan]]). Bahagian yang dikekalkan tulis biasa tanpa tanda.
-4. Beri penjelasan pedagogi: apa yang berubah, kenapa lebih baik, dan kemahiran apa yang pelajar belajar daripada perubahan ni.
-5. Beri perbandingan KUALITATIF antara versi asal dan versi baharu bagi kriteria yang relevan sahaja (kedalaman huraian, kejelasan isi, kekuatan hujah, kerelevanan contoh, hubungan sebab-akibat). Guna nilai tepat "lebih kukuh", "setanding", atau "perlu disemak", dan beri sebab berasaskan teks sebenar (bukan andaian kosong).
-6. JANGAN cipta atau ramal sebarang markah SPM, dan JANGAN dakwa markah pasti akan naik.
+1. Hasilkan versi baharu perenggan ni yang memperbaiki kelemahan misi mengikut strategi dipilih. Kekalkan maksud dan hujah asal pelajar.
+2. Tandakan setiap bahagian BARU atau BERUBAH dengan tanda [[...]]. Bahagian yang dikekalkan tulis biasa tanpa tanda.
+3. JANGAN reka fakta, statistik, nama, tarikh atau petikan tokoh. Kalau contoh diperlukan, guna contoh umum dan tulis label "contoh ilustrasi, semak kebenaran" pada ayat contoh tu.
+4. JANGAN panjangkan ayat semata-mata — utamakan kualiti huraian, relevansi, logik dan kejelasan.
+5. JANGAN dakwa markah SPM akan meningkat. Ini cadangan belajar, bukan penilaian rasmi.
+6. "perubahan" mesti senaraikan ayat atau bahagian yang memang dirujuk kepada teks sebenar (bukan huraian umum).
+7. Kalau pelajar hantar percubaan: "ulasanPercubaan" = apa yang sudah baik + SATU perkara yang boleh ditambah, dengan nada menggalakkan. Kalau tiada percubaan, kosongkan "ulasanPercubaan".
+8. "percubaanBermakna": true HANYA jika percubaan pelajar benar-benar menyentuh kemahiran sasaran misi ni dan bukan salinan teks asal semata-mata. Kalau tiada percubaan, false.
 
 Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua teks dalam Bahasa Melayu:
 {
-  "newTextMarked": "versi baharu perenggan, bahagian baru/berubah dibungkus dengan [[...]]",
-  "penjelasan": "penjelasan pedagogi: apa berubah, kenapa lebih baik, kemahiran apa dipelajari",
-  "kemahiran": ["2-4 kemahiran penulisan yang dipelajari daripada eksperimen ni"],
-  "perbandingan": [
-    { "kriteria": "kedalaman huraian", "nilai": "lebih kukuh atau setanding atau perlu disemak", "sebab": "sebab berasaskan teks sebenar" }
-  ]
+  "versiAI": "versi baharu perenggan, bahagian baru/berubah dibungkus dengan [[...]]",
+  "perubahan": ["ayat atau bahagian yang memang dirujuk kepada teks sebenar"],
+  "sebabPenambahbaikan": "kenapa versi cadangan ni lebih kukuh untuk misi ni",
+  "kemahiran": ["2-4 kemahiran penulisan yang dipelajari daripada misi ni"],
+  "kelebihan": "kekuatan utama versi cadangan ni",
+  "kemungkinanKekurangan": "kelemahan atau risiko kecil versi cadangan ni supaya pelajar berfikir secara kritis",
+  "ulasanPercubaan": "ulasan percubaan pelajar (kosongkan jika tiada percubaan)",
+  "percubaanBermakna": true atau false
 }`;
 
     const response = await openaiClient.responses.create({
@@ -765,10 +885,181 @@ Jawab HANYA dalam format JSON (tiada teks lain, tiada markdown), semua teks dala
     });
 
     const cleanText = response.output_text.replace(/```json|```/g, '').trim();
-    const result = JSON.parse(cleanText);
-    res.json({ success: true, ...result });
+    const hasil = JSON.parse(cleanText);
+
+    const ulasan = percubaan && typeof hasil.ulasanPercubaan === 'string' ? hasil.ulasanPercubaan.trim() : '';
+    const output = {
+      versiAI: typeof hasil.versiAI === 'string' ? hasil.versiAI : '',
+      perubahan: Array.isArray(hasil.perubahan) ? hasil.perubahan : [],
+      sebabPenambahbaikan: typeof hasil.sebabPenambahbaikan === 'string' ? hasil.sebabPenambahbaikan : '',
+      kemahiran: Array.isArray(hasil.kemahiran) ? hasil.kemahiran : [],
+      kelebihan: typeof hasil.kelebihan === 'string' ? hasil.kelebihan : '',
+      kemungkinanKekurangan: typeof hasil.kemungkinanKekurangan === 'string' ? hasil.kemungkinanKekurangan : '',
+      percubaanBermakna: percubaan ? hasil.percubaanBermakna === true : false,
+    };
+    if (ulasan) output.ulasanPercubaan = ulasan;
+
+    res.json({ success: true, ...output });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Jelajah eksperimen:', error);
+    res.status(500).json({ success: false, error: 'Jelajah Idea sedang berehat sekejap. Sila cuba lagi nanti ya.' });
+  }
+});
+
+// ===== Jelajah Idea: putuskan =====
+app.post('/jelajah/putuskan', async (req, res) => {
+  try {
+    const userId = await requireUser(req, res);
+    if (!userId) return;
+
+    const {
+      submissionId, misiId, strategi, percubaanPelajar, versiAI,
+      keputusan, teksPilihan, percubaanBermakna, refleksi,
+    } = req.body || {};
+
+    if (!submissionId || !misiId) {
+      return res.status(400).json({ success: false, error: 'Misi tidak lengkap. Sila muat semula result karangan dan cuba lagi.' });
+    }
+    if (!STRATEGI_SAHA.includes(strategi)) {
+      return res.status(400).json({ success: false, error: 'Strategi tidak sah. Pilih sebab_akibat, contoh, kbat atau ayat.' });
+    }
+    if (!KEPUTUSAN_SAHA.includes(keputusan)) {
+      return res.status(400).json({ success: false, error: 'Keputusan tidak sah. Pilih terima, tolak, edit atau guna_sendiri.' });
+    }
+
+    const { data: submission, error: subError } = await supabase
+      .from('submissions')
+      .select('id, user_id, feedback_data')
+      .eq('id', submissionId)
+      .single();
+    if (subError || !submission) {
+      return res.status(404).json({ success: false, error: 'Karangan tidak dijumpai. Sila cuba lagi dari halaman result.' });
+    }
+    if (submission.user_id !== userId) {
+      return res.status(403).json({ success: false, error: 'Anda tiada akses untuk karangan ini.' });
+    }
+
+    const feedback = submission.feedback_data || {};
+    const misi = (Array.isArray(feedback.misi) ? feedback.misi : []).find((m) => m?.id === misiId);
+    if (!misi || !ZON_SAHA.includes(misi.zon)) {
+      return res.status(404).json({ success: false, error: 'Misi ni tidak dijumpai dalam karangan ini. Sila muat semula halaman result.' });
+    }
+
+    const adaPercubaan = typeof percubaanPelajar === 'string' && percubaanPelajar.trim() !== '';
+    const bermakna = adaPercubaan && percubaanBermakna === true;
+
+    // XP dikira di server — jangan percaya nilai XP daripada klien.
+    let xp = !adaPercubaan ? 0 : (bermakna ? 10 : 4);
+
+    // XP hanya untuk gabungan (user, submission, misi) yang pertama; percubaan ulang dapat xp 0.
+    const { data: sediaAda } = await supabase
+      .from('jelajah_attempts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('submission_id', submissionId)
+      .eq('misi_id', misiId)
+      .limit(1);
+    if (Array.isArray(sediaAda) && sediaAda.length > 0) xp = 0;
+
+    const row = {
+      user_id: userId,
+      submission_id: submissionId,
+      misi_id: misiId,
+      zon: misi.zon,
+      strategi,
+      petikan_asal: typeof misi.petikan === 'string' ? misi.petikan : '',
+      percubaan_pelajar: adaPercubaan ? percubaanPelajar.trim() : null,
+      versi_ai: typeof versiAI === 'string' ? versiAI : null,
+      teks_pilihan: typeof teksPilihan === 'string' ? teksPilihan : null,
+      keputusan,
+      percubaan_bermakna: bermakna,
+      xp,
+    };
+    if (typeof refleksi === 'string' && refleksi.trim()) row.refleksi = refleksi.trim();
+
+    let hasil = await simpanCubaan(row);
+    if (hasil.error && isRalatUnik(hasil.error)) {
+      // percubaan ulang — simpan semula dengan xp 0
+      row.xp = 0;
+      hasil = await simpanCubaan(row);
+    }
+    if (hasil.error) {
+      if (isRalatUnik(hasil.error)) {
+        return res.status(409).json({ success: false, error: 'Misi ni sudah pun direkod sebelum ini. Percubaan lama anda kekal tersimpan.' });
+      }
+      console.error('Jelajah putuskan:', hasil.error);
+      return res.status(500).json({ success: false, error: 'Gagal menyimpan percubaan anda. Sila cuba lagi.' });
+    }
+
+    res.json({ success: true, xp: row.xp, cubaan: hasil.data });
+  } catch (error) {
+    console.error('Jelajah putuskan:', error);
+    res.status(500).json({ success: false, error: 'Gagal menyimpan percubaan anda. Sila cuba lagi.' });
+  }
+});
+
+// ===== Jelajah Idea: ringkasan XP, zon dan lencana =====
+app.get('/jelajah/ringkasan', async (req, res) => {
+  try {
+    const userId = await requireUser(req, res);
+    if (!userId) return;
+
+    const { data, error } = await supabase
+      .from('jelajah_attempts')
+      .select('misi_id, zon, percubaan_bermakna, xp')
+      .eq('user_id', userId);
+    if (error) throw error;
+
+    const xp = (data || []).reduce((j, a) => j + (Number(a.xp) || 0), 0);
+
+    const zon = {};
+    ZON_SAHA.forEach((z) => { zon[z] = { selesai: 0, sasaran: 3 }; });
+    const misiBermakna = new Set();
+    for (const a of data || []) {
+      if (a.percubaan_bermakna === true && ZON_SAHA.includes(a.zon)) {
+        const kunci = `${a.zon}:${a.misi_id}`;
+        if (misiBermakna.has(kunci)) continue;
+        misiBermakna.add(kunci);
+        zon[a.zon].selesai += 1;
+      }
+    }
+
+    let tahap = 1;
+    AMBANG_XP.forEach((ambang, i) => { if (xp >= ambang) tahap = i + 1; });
+    const xpTahapSeterusnya = tahap < AMBANG_XP.length ? AMBANG_XP[tahap] : null;
+
+    const lencana = LENCANA.map((l) => ({ ...l, terbuka: zon[l.zon].selesai >= 3 }));
+
+    res.json({ success: true, xp, tahap, xpTahapSeterusnya, zon, lencana });
+  } catch (error) {
+    console.error('Jelajah ringkasan:', error);
+    res.status(500).json({ success: false, error: 'Gagal mendapatkan ringkasan Jelajah Idea. Sila cuba lagi.' });
+  }
+});
+
+// ===== Jelajah Idea: sejarah cubaan bagi satu karangan =====
+app.get('/jelajah/sejarah/:submissionId', async (req, res) => {
+  try {
+    const userId = await requireUser(req, res);
+    if (!userId) return;
+
+    const { submissionId } = req.params;
+    if (!submissionId) {
+      return res.status(400).json({ success: false, error: 'Id karangan diperlukan.' });
+    }
+
+    const { data, error } = await supabase
+      .from('jelajah_attempts')
+      .select('zon, strategi, petikan_asal, teks_pilihan, keputusan, created_at')
+      .eq('user_id', userId)
+      .eq('submission_id', submissionId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    res.json({ success: true, sejarah: data || [] });
+  } catch (error) {
+    console.error('Jelajah sejarah:', error);
+    res.status(500).json({ success: false, error: 'Gagal mendapatkan sejarah jelajah anda. Sila cuba lagi.' });
   }
 });
 
